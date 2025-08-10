@@ -1,0 +1,54 @@
+name: Deploy OppTrackGraph to DigitalOcean Droplet
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:  # Enables the "Run workflow" button in GitHub UI
+
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Install doctl
+        uses: digitalocean/action-doctl@v2
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+
+      - name: Log in to DigitalOcean Container Registry
+        run: doctl registry login
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: registry.digitalocean.com/${{ secrets.DIGITALOCEAN_REGISTRY }}/opptrack-graph:${{ github.sha }}
+
+      - name: SSH into Droplet and Deploy
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DROPLET_IP }}
+          username: root
+          key: ${{ secrets.DROPLET_SSH_KEY }}
+          script: |
+            echo "${{ secrets.DIGITALOCEAN_REGISTRY_TOKEN }}" | docker login registry.digitalocean.com -u doctl --password-stdin
+            # Enable IPv6 forwarding and NAT66
+            sysctl -w net.ipv6.conf.all.forwarding=1
+            ip6tables -t nat -C POSTROUTING -s fd00:dead:beef::/48 -j MASQUERADE 2>/dev/null || \
+            ip6tables -t nat -A POSTROUTING -s fd00:dead:beef::/48 -j MASQUERADE
+
+            docker stop opptrack-graph || true
+            docker rm opptrack-graph || true
+
+            docker pull registry.digitalocean.com/${{ secrets.DIGITALOCEAN_REGISTRY }}/opptrack-graph:${{ github.sha }}
+
+            docker run -d \
+              --name opptrack-graph \
+              --env-file /root/env/cleric.env \
+              -p 80:8080 \
+              registry.digitalocean.com/${{ secrets.DIGITALOCEAN_REGISTRY }}/opptrack-graph:${{ github.sha }}

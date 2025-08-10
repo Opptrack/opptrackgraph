@@ -1,0 +1,10 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Logging
+
+- Do not use print statements. Use the logger from [logger.py](mdc:app/core/logger.py)
+- You can use the imported logger in [llm_service.py](mdc:app/services/llm_service.py) as reference

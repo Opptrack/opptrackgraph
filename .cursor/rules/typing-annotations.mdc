@@ -1,0 +1,13 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Type annotation rules
+
+- For type annotations on variables, do not use excessively use the Typing library
+- Python 3.10+ has type support for things like list, optional, dict, etc, use these rather than Dict, List, etc
+- Instead of Optional, use the | delimeter.
+
+

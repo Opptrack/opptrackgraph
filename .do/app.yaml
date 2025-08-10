@@ -1,0 +1,85 @@
+alerts:
+- rule: DEPLOYMENT_FAILED
+- rule: DOMAIN_FAILED
+envs:
+- key: LLM_API_BASE_URL
+  scope: RUN_AND_BUILD_TIME
+  value: https://openrouter.ai/api/v1
+- key: EMBEDDING_API_BASE_URL
+  scope: RUN_AND_BUILD_TIME
+  value: https://api.studio.nebius.ai/v1/
+- key: PERPLEXITY_API_KEY
+  scope: RUN_AND_BUILD_TIME
+  type: SECRET
+  value: EV[1:XOfkGNv8v8Ombh/D7PYxHjANqR+iyh7v:CE/QUpaJ0QVH+/s+8GznIxAYT1jYEDcY6njQJG2VqiPCRo0V+V+xsBoF3KkXtM6c0OvZzfX32Gru2SM1daneujtn2Xbg]
+- key: PERPLEXITY_API_BASE_URL
+  scope: RUN_AND_BUILD_TIME
+  value: https://api.perplexity.ai/
+- key: GEMINI_MODEL_NAME
+  scope: RUN_AND_BUILD_TIME
+  value: gemini-2.5-pro-preview-03-25
+- key: GEMINI_API_KEY
+  scope: RUN_AND_BUILD_TIME
+  type: SECRET
+  value: EV[1:FVJA3T5ALpp+9bWsyUJUIwZOyUOQYdbT:Krjn0x2oNMfH2sxoLf5iLiIFG/U0Dei98i9uVRrYweq/6iySed5qbHSxOKV9ndrR0nDTP/mk4w==]
+- key: LLM_MODEL_NAME
+  scope: RUN_AND_BUILD_TIME
+  value: google/gemini-2.0-flash-001
+- key: EMBEDDING_MODEL_NAME
+  scope: RUN_AND_BUILD_TIME
+  value: BAAI/bge-en-icl
+- key: LLM_API_KEY
+  scope: RUN_AND_BUILD_TIME
+  type: SECRET
+  value: EV[1:12YHpo5jwUl+ojkg2Iu7QSHj2ISg/EAb:b4LVMQ45kdIiVf2q/NSueWlDqD72eW2E+tHcUZHGVad+H6SiLbfpWrM4AXQ38E4u7it5/vSYmDaGRB99lK8bCZ2dTYfuadpysYr8w3wRCbgGwrRMbhrMKy0=]
+- key: EMBEDDING_API_KEY
+  scope: RUN_AND_BUILD_TIME
+  type: SECRET
+  value: EV[1:zUIgDuQrIVHWOlc71QiMljl5mxZmqwBO:GCHQbJbB0Xv831yEQW7zaSyvjkspU8z3IzjFdULPU2IPUb7q3YMHE7qn9pH3xPiuv8lpLc+xP2hnLEw0yltHxRj0lS/hiwNBWgnWpFNWbh75AQxoJWca2OGFzM1miqnovj2ctkXOsPkwfUkCLbPlIGd2BLwUXdIf9ZdpY4yZtpyn6XPyL7Y/kJrFnM588/Pl78WE3bI2CyROS9RsU+qLe8dFJJkgj+Lf9gO5x3jnFIFqFuIWKiyKyi3UUYlPlsqHNxpDpHApBvDQPXBAOPSVq4DKvOHIUFDm8Kk/S845vXKR8ekg1sGTGyNPRUuLjaNnGeMns0zQAImfEt1Yp82TMNri7ZJzYUKZ1yb0zp3ZI5orSQPzO9/SbCKEJixFQ/iMtL29RgGe3UH3pGjCxNzmy8WYgJDYMTrKBzR63d+KazX2fU09PUlRFNxbzFlM9Atdl7oP5HEmObrY7wK13IG4DUyohYzF3Y3Nbu0jQme8QhqXQc0GCm9I14SHV6GudML0p7tDRsCFqgJNGFq03loS95SP6RUla4jV19lI2IvuTgDiXgivdK6TmnyVgAp28qps17DIUBpMfrnDD6cIYkystua6zF5CBbj1NxWEOEfBQeLt20NBwiq0YGJROhZ9j9Ox2kopRyUiNZCyypjbBtkhuE65r+P7KdbYw9pX3je5sL1JYS9nyfcyaSMcN9pK3Kg41L0T]
+- key: POSTGRES_DB_NAME
+  scope: RUN_AND_BUILD_TIME
+  value: codebuddy
+- key: POSTGRES_DB_USER
+  scope: RUN_AND_BUILD_TIME
+  value: postgres
+- key: POSTGRES_DB_PASSWORD
+  scope: RUN_AND_BUILD_TIME
+  type: SECRET
+  value: EV[1:PzZ8Kn6P7S0k/L/kp5zOp4/yzstlycky:3bPQ+l1IJs310gSdGCrT3OgrtRtEsKEY]
+- key: POSTGRES_DB_HOST
+  scope: RUN_AND_BUILD_TIME
+  value: localhost
+- key: POSTGRES_DB_PORT
+  scope: RUN_AND_BUILD_TIME
+  value: "5432"
+- key: LOG_LEVEL
+  scope: RUN_AND_BUILD_TIME
+  value: INFO
+# Sentry removed for generic template
+features:
+- buildpack-stack=ubuntu-22
+ingress:
+  rules:
+  - component:
+      name: opptrackgraph
+    match:
+      path:
+        prefix: /
+  name: opptrack-backend
+region: sfo
+services:
+- autoscaling:
+    max_instance_count: 4
+    metrics:
+      cpu:
+        percent: 71
+    min_instance_count: 1
+  dockerfile_path: /Dockerfile
+  github:
+    branch: main
+    deploy_on_push: true
+    repo: ConnorAndOzandManavDoAStartup/OppTrackGraph
+  http_port: 8080
+  instance_size_slug: apps-d-1vcpu-2gb
+  name: opptrackgraph
+  source_dir: /
