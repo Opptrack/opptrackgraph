@@ -3,7 +3,6 @@ import uuid
 from functools import lru_cache
 import logging
 from app.services.database_service import get_database_service
-import httpx
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -27,7 +26,9 @@ class FileStorageService:
         file_extension = Path(file_name).suffix
         return f"{unique_id}{file_extension}"
 
-    def upload_file(self, file_content: bytes, file_name: str, bucket: str) -> str:
+    def upload_file(
+        self, file_content: bytes, file_name: str, bucket: str
+    ) -> str:
         """Upload a file to Supabase storage and return the file path
 
         Args:
@@ -42,37 +43,49 @@ class FileStorageService:
         try:
             storage_client = self.db_service.supabase.storage
             logger.info(
-                f"Creating signed upload URL for path: {storage_path} in bucket: {bucket}"
+                "Creating signed upload URL for path: %s in bucket: %s",
+                storage_path,
+                bucket,
             )
             signed_url_response = storage_client.from_(bucket).create_signed_upload_url(
                 storage_path
             )
 
-            if not signed_url_response or "signedUrl" not in signed_url_response:
+            if (
+                not signed_url_response
+                or "signedUrl" not in signed_url_response
+            ):
                 raise Exception("Failed to create signed upload URL")
 
             path = signed_url_response["path"]
             token = signed_url_response["token"]
             storage_client.from_(bucket).upload_to_signed_url(
-                path=path, token=token, file=file_content
+                path=path,
+                token=token,
+                file=file_content,
             )
             logger.info(
-                f"Successfully uploaded file to path: {storage_path} in bucket: {bucket}"
+                "Successfully uploaded file to path: %s in bucket: %s",
+                storage_path,
+                bucket,
             )
 
             file_url = storage_client.from_(bucket).get_public_url(storage_path)
             return file_url
 
         except Exception as e:
-            logger.error(f"Error uploading file: {str(e)}")
-            logger.error(f"Error type: {type(e).__name__}")
+            logger.error("Error uploading file: %s", str(e))
+            logger.error("Error type: %s", type(e).__name__)
             logger.error(f"Storage path: {storage_path}")
             logger.error(f"File name: {file_name}")
             logger.error(f"Bucket: {bucket}")
             raise
 
     async def download_file(
-        self, url: str, bucket: str, timeout: Optional[float] = 30.0
+        self,
+        url: str,
+        bucket: str,
+        timeout: Optional[float] = 30.0,
     ) -> bytes:
         """Download a file from Supabase storage and return its contents as bytes.
 
@@ -88,20 +101,22 @@ class FileStorageService:
             Exception: If the download fails or times out
         """
         try:
-            logger.info(f"Downloading file from bucket '{bucket}': {url}")
+            logger.info("Downloading file from bucket '%s': %s", bucket, url)
 
             # Extract the file path from the URL (last part after the last /)
             file_path = url.split("/")[-1]
 
             storage_client = self.db_service.supabase.storage
             response = storage_client.from_(bucket).download(file_path)
-            logger.info(f"Successfully downloaded file from bucket '{bucket}': {url}")
+            logger.info(
+                "Successfully downloaded file from bucket '%s': %s", bucket, url
+            )
             return response
 
         except Exception as e:
-            logger.error(f"Error downloading file from bucket '{bucket}': {str(e)}")
-            logger.error(f"Error type: {type(e).__name__}")
-            logger.error(f"URL: {url}")
+            logger.error("Error downloading file from bucket '%s': %s", bucket, str(e))
+            logger.error("Error type: %s", type(e).__name__)
+            logger.error("URL: %s", url)
             raise Exception(f"Failed to download file: {str(e)}")
 
 

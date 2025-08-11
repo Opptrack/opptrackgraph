@@ -1,22 +1,14 @@
 from typing import Dict, Any
-import pypdf
+import re
 from io import BytesIO
-from nltk.tokenize import word_tokenize, sent_tokenize
-from nltk.tag import pos_tag
-from nltk.chunk import ne_chunk
 from datetime import datetime
-from app.core.exceptions import PDFException
-from app.core.logger import logger
-import os
-from app.config.config import app_settings
 
+import pypdf
 from pdf2image import convert_from_bytes
 import pytesseract
-from PIL import Image
 
-
-if app_settings.NLTK_DATA_PATH:
-    os.environ["NLTK_DATA"] = app_settings.NLTK_DATA_PATH
+from app.core.exceptions import PDFException
+from app.core.logger import logger
 
 
 class PDFProcessor:
@@ -37,12 +29,16 @@ class PDFProcessor:
                 try:
                     page_text = page.extract_text()
                     if not page_text or not page_text.strip():
-                        logger.info(f"Page {page_num + 1} needs OCR")
+                        logger.info("Page %s needs OCR", page_num + 1)
                         needs_ocr = True
                         break
                     full_text += page_text + "\n"
                 except Exception as e:
-                    logger.error(f"Text extraction failed on page {page_num + 1}: {e}")
+                    logger.error(
+                        "Text extraction failed on page %s: %s",
+                        page_num + 1,
+                        str(e),
+                    )
                     raise PDFException(f"Failed to extract text: {e}")
 
             if needs_ocr:
@@ -52,14 +48,9 @@ class PDFProcessor:
             if not full_text.strip():
                 raise ValueError("No text could be extracted from the PDF")
 
-            try:
-                sentences = sent_tokenize(full_text)
-                tokens = word_tokenize(full_text)
-                tagged = pos_tag(tokens)
-                entities = ne_chunk(tagged)
-            except Exception as e:
-                logger.error(f"NLTK processing failed: {e}")
-                raise PDFException(f"Text processing failed: {e}")
+            # Basic text stats without NLTK
+            sentences = [s for s in re.split(r"(?<=[.!?])\s+", full_text.strip()) if s]
+            tokens = re.findall(r"\b\w+\b", full_text)
 
             return {
                 "text_content": full_text,
@@ -70,7 +61,7 @@ class PDFProcessor:
                 "analysis": {
                     "num_sentences": len(sentences),
                     "num_words": len(tokens),
-                    "entities": PDFProcessor._extract_entities(entities),
+                    "entities": PDFProcessor._empty_entities(),
                 },
             }
         except Exception as e:
@@ -86,27 +77,18 @@ class PDFProcessor:
                 page_text = pytesseract.image_to_string(img)
                 text += page_text + "\n"
             except Exception as e:
-                logger.error(f"OCR failed on page {i + 1}: {e}")
+                logger.error("OCR failed on page %s: %s", i + 1, str(e))
         return text
 
     @staticmethod
-    def _extract_entities(chunked) -> Dict[str, list]:
-        entities = {
+    def _empty_entities() -> Dict[str, list]:
+        return {
             "PERSON": [],
             "ORGANIZATION": [],
             "GPE": [],
             "DATE": [],
             "MONEY": [],
         }
-
-        for chunk in chunked:
-            if hasattr(chunk, "label"):
-                entity_type = chunk.label()
-                if entity_type in entities:
-                    entity_text = " ".join(token for token, _ in chunk.leaves())
-                    if entity_text not in entities[entity_type]:
-                        entities[entity_type].append(entity_text)
-        return entities
 
     # @staticmethod
     # def extract_info(pdf_file: bytes, document_type: str) -> Dict[str, Any]:
@@ -127,14 +109,19 @@ class PDFProcessor:
     #             try:
     #                 page_text = page.extract_text()
     #                 if not page_text:
-    #                     logger.warning(f"Page {page_num + 1} has no extractable text")
+    #                     logger.warning(
+    #                         "Page %s has no extractable text", page_num + 1
+    #                     )
     #                 full_text += page_text + "\n"
     #             except Exception as e:
     #                 logger.error(
-    #                     f"Error extracting text from page {page_num + 1}: {str(e)}"
+    #                     "Error extracting text from page %s: %s",
+    #                     page_num + 1,
+    #                     str(e),
     #                 )
     #                 raise PDFException(
-    #                     f"Failed to extract text from page {page_num + 1}: {str(e)}"
+    #                     "Failed to extract text from page %s: %s"
+    #                     % (page_num + 1, str(e))
     #                 )
 
     #         if not full_text.strip():
@@ -169,23 +156,4 @@ class PDFProcessor:
     #         logger.error(f"PDF Processing error: {str(e)}", exc_info=True)
     #         raise
 
-    @staticmethod
-    def _extract_entities(chunked) -> Dict[str, list]:
-        """Extract named entities from chunked text"""
-        entities = {
-            "PERSON": [],
-            "ORGANIZATION": [],
-            "GPE": [],  # Geo-Political Entities
-            "DATE": [],
-            "MONEY": [],
-        }
-
-        for chunk in chunked:
-            if hasattr(chunk, "label"):
-                entity_type = chunk.label()
-                if entity_type in entities:
-                    entity_text = " ".join([token for token, pos in chunk.leaves()])
-                    if entity_text not in entities[entity_type]:
-                        entities[entity_type].append(entity_text)
-
-        return entities
+    # Note: entity extraction removed with NLTK; returning empty categories

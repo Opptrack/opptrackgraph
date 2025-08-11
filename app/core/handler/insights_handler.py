@@ -1,13 +1,11 @@
 from typing import Any, Dict, List, Tuple
 
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.core.logger import logger
 from app.services.embedding_service import EmbeddingService
 from app.core.tools.clustering import kmeans
 from app.services.llm_service import LLMService
 from app.schema.llm.message import Message
+from app.services.database_service import get_database_service
 
 
 def _summarize_texts(texts: List[str], max_chars: int = 1200) -> str:
@@ -33,40 +31,66 @@ class InsightsHandler:
         self.llm = LLMService()
 
     async def fetch_industry_rows(
-        self, db: AsyncSession, industry: str, limit: int
+        self, industry: str, limit: int
     ) -> List[Dict[str, Any]]:
-        sql = text(
-            """
-            SELECT conversation_id, account_name, is_won,
-                   opportunity_stage, transcript
-            FROM v_conversations_enriched
-            WHERE account_industry = :industry
-              AND transcript IS NOT NULL
-            ORDER BY external_event_timestamp DESC
-            LIMIT :limit
-            """
-        )
-        result = await db.execute(sql, {"industry": industry, "limit": limit})
-        return [dict(r) for r in result.mappings().all()]
+        """Fetch rows for an industry using Supabase PostgREST.
+
+        Falls back to empty list if the request fails.
+        """
+        db_service = get_database_service()
+        try:
+            query = (
+                db_service.supabase
+                .table("v_conversations_enriched")
+                .select(
+                    "conversation_id,account_name,is_won,"
+                    "opportunity_stage,transcript"
+                )
+                .eq("account_industry", industry)
+                .order(
+                    "external_event_timestamp",
+                    desc=True,
+                )
+                .limit(limit)
+            )
+            # Note: do not filter transcript here; include all rows and
+            # handle empty/missing transcripts downstream
+
+            resp = query.execute()
+            data = getattr(resp, "data", [])
+            if not isinstance(data, list):
+                return []
+            return data
+        except Exception as e:
+            logger.error(
+                "Supabase industry fetch failed: %s",
+                str(e),
+            )
+            return []
 
     @staticmethod
     def extract_texts(rows: List[Dict[str, Any]]) -> List[str]:
         texts: List[str] = []
         for r in rows:
             tr = r.get("transcript")
+            utterances: List[Dict[str, Any]] = []
             if isinstance(tr, dict):
-                utterances = tr.get("utterances", [])
+                utterances = tr.get("utterances", [])  # type: ignore[assignment]
             elif isinstance(tr, str):
                 try:
                     import json
 
-                    utterances = json.loads(tr).get("utterances", [])
+                    parsed = json.loads(tr)
+                    if isinstance(parsed, dict):
+                        utterances = parsed.get("utterances", [])
                 except Exception:
                     utterances = []
-            else:
-                utterances = []
-            merged = " ".join(str(u.get("text", "")).strip() for u in utterances)
-            texts.append(merged)
+
+            merged = " ".join(
+                str(u.get("text", "")).strip() for u in (utterances or [])
+            ).strip()
+            if merged:
+                texts.append(merged)
         return texts
 
     async def cluster_texts(
@@ -100,7 +124,7 @@ class InsightsHandler:
                 "insights per cluster and overall. Return STRICT JSON with keys: "
                 "clusters (list with {id, size, won, lost, themes, action_items, "
                 "competitors, win_reasons, loss_reasons}), and overall (summary, "
-                "recommendations)."
+                "recommendations). It's very important to have specific ideas and examples and not just generic themes. Fundaamentally we need specific insights and care little about anything else"
             ),
         )
         user = Message(
@@ -114,3 +138,78 @@ class InsightsHandler:
 
         resp = await self.llm.query_llm([system, user], json_response=True)
         return resp  # type: ignore
+
+    async def compute_industry_insights(
+        self, industry: str, limit: int
+    ) -> Dict[str, Any] | None:
+        """Fetch rows, cluster texts, and generate insights for an industry.
+
+        Returns a structured response or None if no rows were found.
+        """
+        rows = await self.fetch_industry_rows(industry, limit)
+        if not rows:
+            return None
+
+        texts = self.extract_texts(rows)
+        import math
+
+        k = max(2, min(8, int(math.sqrt(max(1, len(texts))))))
+        labels, _vectors, _centroids = await self.cluster_texts(texts, k=k)
+        insights = await self.generate_cluster_insights(
+            industry, rows, labels
+        )
+        return {
+            "industry": industry,
+            "count": len(rows),
+            "insights": insights,
+        }
+
+    async def fetch_recent_rows(self, limit: int) -> List[Dict[str, Any]]:
+        """Fetch most recent conversations regardless of industry."""
+        db_service = get_database_service()
+        try:
+            resp = (
+                db_service.supabase
+                .table("v_conversations_enriched")
+                .select(
+                    "conversation_id,account_name,is_won,"
+                    "opportunity_stage,transcript"
+                )
+                .order(
+                    "external_event_timestamp",
+                    desc=True,
+                )
+                .limit(limit)
+                .execute()
+            )
+            data = getattr(resp, "data", [])
+            return data if isinstance(data, list) else []
+        except Exception as e:
+            logger.error(
+                "Supabase recent fetch failed: %s",
+                str(e),
+            )
+            return []
+
+    async def compute_overall_insights(
+        self, limit: int
+    ) -> Dict[str, Any] | None:
+        rows = await self.fetch_recent_rows(limit)
+        if not rows:
+            return None
+
+        texts = self.extract_texts(rows)
+        import math
+
+        k = max(2, min(8, int(math.sqrt(max(1, len(texts))))))
+        labels, _vectors, _centroids = await self.cluster_texts(texts, k=k)
+        insights = await self.generate_cluster_insights(
+            "Overall",
+            rows,
+            labels,
+        )
+        return {
+            "industry": "Overall",
+            "count": len(rows),
+            "insights": insights,
+        }

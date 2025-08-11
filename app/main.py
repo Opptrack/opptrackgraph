@@ -5,6 +5,7 @@ import uvicorn
 from app.core.logger import logger
 from app.api.insights import router as insights_router
 from app.api.config import router as config_router
+from app.api.test import router as test_router
 from app.utils.routes_middleware import RawRequestLoggerMiddleware
 
 
@@ -32,6 +33,7 @@ router = APIRouter()
 app.include_router(router)
 app.include_router(insights_router)
 app.include_router(config_router)
+app.include_router(test_router)
 
 
 @app.get("/health")

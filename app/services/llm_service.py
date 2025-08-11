@@ -224,9 +224,12 @@ class LLMService:
         """
         client = self._client()
 
+        # Convert our pydantic Message/ToolMessage or OpenAI objects to dicts
+        converted_messages = [self._to_message_param(m) for m in messages]
+
         request_params = {
             "model": self.model_name,
-            "messages": messages,
+            "messages": converted_messages,
             "tools": tools,
             "response_format": {"type": "json_object"} if json_response else None,
             **kwargs,
@@ -236,12 +239,14 @@ class LLMService:
             "Making LLM API request",
             extra={
                 "request_id": request_id,
-                "latest_message_content": messages[-1].get("content", "")[:200] + "..."
-                if len(str(messages[-1].get("content", ""))) > 200
-                else messages[-1].get("content", ""),
+                "latest_message_content": (
+                    str(converted_messages[-1].get("content", ""))[:200] + "..."
+                    if len(str(converted_messages[-1].get("content", ""))) > 200
+                    else converted_messages[-1].get("content", "")
+                ),
                 "request_params": {
                     "model": request_params["model"],
-                    "message_count": len(messages),
+                    "message_count": len(converted_messages),
                     "tools_provided": len(tools) if tools else 0,
                     "json_response": json_response,
                     "additional_params": list(kwargs.keys()),
@@ -329,9 +334,12 @@ class LLMService:
             },
         )
 
-        full_messages = (
-            messages + [initial_completion.choices[0].message] + tool_results
+        base_messages = [self._to_message_param(m) for m in messages]
+        assistant_message = self._to_message_param(
+            initial_completion.choices[0].message
         )
+        tool_messages = [self._to_message_param(t) for t in tool_results]
+        full_messages = base_messages + [assistant_message] + tool_messages
 
         logger.debug(
             "Making follow-up LLM request with tool results",
@@ -370,6 +378,27 @@ class LLMService:
         # Sentry usage metrics removed for generic template
 
         return final_completion
+
+    def _to_message_param(self, obj: Any) -> dict:
+        """Normalize various message-like objects to OpenAI ChatCompletionMessageParam.
+
+        Supports our pydantic Message/ToolMessage, OpenAI SDK message objects
+        (with model_dump), dicts, or simple objects exposing role/content.
+        """
+        try:
+            # Our pydantic models
+            if hasattr(obj, "model_dump"):
+                dumped = obj.model_dump(exclude_none=True)
+                # Ensure only expected keys are present
+                return dumped  # type: ignore[return-value]
+        except Exception:
+            pass
+        if isinstance(obj, dict):
+            return obj
+        # Fallback best-effort
+        role = getattr(obj, "role", "user")
+        content = getattr(obj, "content", "")
+        return {"role": role, "content": content}
 
     def _process_response(
         self, completion: ChatCompletion, json_response: bool, request_id: uuid.UUID

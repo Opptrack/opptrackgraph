@@ -1,37 +1,92 @@
+### OppTrackGraph API
 
+Python/FastAPI service for opportunity insights, embeddings, PDF processing (with OCR fallback), and Supabase-backed storage.
 
+### Prerequisites
+- Python 3.11+ (Docker image uses 3.13)
+- macOS or Linux
+- For PDF OCR and LaTeX features:
+  - macOS: install MacTeX or BasicTeX (provides `pdflatex`), and Tesseract
+    - `brew install --cask mactex` or `brew install --cask basictex`
+    - `brew install tesseract poppler`
+  - Linux (Debian/Ubuntu):
+    - `sudo apt-get update && sudo apt-get install -y texlive-latex-base texlive-latex-extra tesseract-ocr poppler-utils`
+
+### Setup
+1) Create and activate a virtualenv
+
+```bash
 python -m venv venv
+. venv/bin/activate
+```
 
-source venv/bin/activate
+2) Install requirements
 
-pip install -r requirements.txt
+```bash
+# macOS
+pip install -r requirements-mac.txt
 
-#open interpreter
-python 
-import nltk
-nltk.download('punkt')
-nltk.download('punkt_tab')
-nltk.download('averaged_perceptron_tagger')
-nltk.download('maxent_ne_chunker')
-nltk.download('words')
-nltk.download('averaged_perceptron_tagger_eng')
-nltk.download('maxent_ne_chunker_tab')
+# Linux
+pip install -r requirements-linux.txt
+```
 
-sudo apt install texlive-latex-base
-sudo apt-get update
-sudo apt-get install texlive-latex-extra
+3) Configure environment variables in `.env` (example keys)
 
-sudo apt-get install tesseract-ocr poppler-utils  # if you're on Linux
+```env
+LLM_API_BASE_URL=...
+LLM_MODEL_NAME=...
+LLM_API_KEY=...
+EMBEDDING_API_BASE_URL=...
+EMBEDDING_MODEL_NAME=...
+EMBEDDING_API_KEY=...
+SUPABASE_URL=...
+SUPABASE_SERVICE_ROLE_KEY=...
+SUPABASE_ANON_KEY=...
+SUPABASE_PASSWORD=...
+SUPABASE_HOST=...
+POSTGRES_DB_NAME=...
+POSTGRES_DB_USER=...
+POSTGRES_DB_PASSWORD=...
+POSTGRES_DB_HOST=...
+POSTGRES_DB_PORT=...
+```
 
-sudo docker network create   --ipv6   --subnet=fd00:dead:bead::/64   custom_ipv6_net
+### Run (local)
 
-sudo docker run --rm --net custom_ipv6_net busybox ip -6 addr
+```bash
+uvicorn app.main:app --host 0.0.0.0 --port 8080 --reload
+```
 
-sudo docker build -t opptrackgraph .
+Then open `http://localhost:8080/health`.
 
-(venv) oz@Dagon:~/OppTrackGraph$ sudo docker run \
-  --rm \
-  --net custom_ipv6_net \
-  --env-file .env \
-  -p 8080:8080 \
-opptrackgraph
+### Scripts
+- `scripts/run_app.sh`: creates venv if missing, installs requirements, runs the API
+- `scripts/run_tests.sh`: installs test packages and runs pytest with coverage
+
+### Docker
+
+Build and run:
+
+```bash
+docker build -t opptrackgraph .
+docker run --rm --env-file .env -p 8080:8080 opptrackgraph
+```
+
+The image installs LaTeX, Tesseract and Poppler, and downloads NLTK data at build time.
+
+### Testing
+
+```bash
+. venv/bin/activate
+./scripts/run_tests.sh
+```
+
+### Endpoints
+- `GET /health` — service health
+- `GET /config/check` — show which config keys are present (masked)
+- `GET /insights/industries?limit=N`
+- `GET /insights/industry?account_industry=...&limit=N`
+
+### Notes
+- Supabase is used for auth and storage; configure keys in `.env`.
+- Database connections use `asyncpg` via SQLAlchemy.
